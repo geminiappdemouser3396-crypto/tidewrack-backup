@@ -30,5 +30,7 @@ conversation. Small but whole and playable.
 | `f554a9e6` | Restored explicit keyboard events alongside the existing pad mappings and registered Journal. Configuration verified statically. |
 | `d61dec83` | V2 saves include Journal discoveries and an active graph/node cursor. Continue resumes after the recreated scene is listening. V1 preserves only its recorded scene and flags. Static path inspection and Python payload fixtures passed. |
 | `8bb007f1` | Added an engine-free report for node and choice flag assignments. Two dialogue files passed with zero warnings; six writes were found, all on choices. Four focused Python tests passed. |
+| `1ab3413c` | Added six corrected design and production copies from supplied snapshots. |
+| `b10a6e7b` | Save reads back its temporary file before checked slot replacement. Continue rejects invalid fields and checks the scene handoff before installing live state. Overwrite confirmation remains absent. Static checks covered code ordering. Target-filesystem interruption tests and an actual Godot run are pending. |
 
 Godot startup, physical controls, UI layout and save/Continue behavior remain unverified. The later branch adds neither the journal reader nor the lamp puzzle. Additional island areas remain outside the lighthouse demo. October release-candidate records concern a later build and do not verify August behavior.
