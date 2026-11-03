@@ -6,8 +6,11 @@ Checks, for every data/dialogue/*.json file:
   - each node is either a linear node ("next": id|null) or a choice node
     ("choices": [{text, next, set_flag?}]) — not neither, not both
   - every referenced target id exists
-  - at least one terminal (next == null) is reachable from an entry point
+  - at least one terminal exists somewhere in the file
   - reports orphan nodes (unreachable from any known entry) as warnings
+
+Also lists each node and choice set_flag assignment in file order. Choice
+indices are zero-based. The report is descriptive and does not affect status.
 
 Exit code 0 = all valid, 1 = at least one error.
 
@@ -103,6 +106,25 @@ def validate_file(path: Path) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def flag_assignments(graph: dict):
+    """Yield the node, optional choice index, flag and JSON value for each write."""
+    for node_id, node in graph.items():
+        if not isinstance(node, dict):
+            continue
+        node_flags = node.get("set_flag")
+        if isinstance(node_flags, dict):
+            for name, value in node_flags.items():
+                yield node_id, None, name, value
+
+        choices = node.get("choices")
+        if isinstance(choices, list):
+            for index, choice in enumerate(choices):
+                choice_flags = choice.get("set_flag") if isinstance(choice, dict) else None
+                if isinstance(choice_flags, dict):
+                    for name, value in choice_flags.items():
+                        yield node_id, index, name, value
+
+
 def main() -> int:
     files = sorted(DIALOGUE_DIR.glob("*.json"))
     if not files:
@@ -116,7 +138,15 @@ def main() -> int:
         all_errors += errs
         all_warnings += warns
         status = "OK" if not errs else "FAIL"
-        print(f"[{status}] {path.relative_to(ROOT)}  ({len(json.loads(path.read_text()))} nodes)")
+        graph = json.loads(path.read_text())
+        source = path.relative_to(ROOT)
+        print(f"[{status}] {source}  ({len(graph)} nodes)")
+        assignments = list(flag_assignments(graph)) if isinstance(graph, dict) else []
+        if not assignments:
+            print(f"  {source}: no set_flag assignments")
+        for node_id, index, name, value in assignments:
+            location = "node" if index is None else f"choice[{index}]"
+            print(f"  {source}:{node_id}:{location}  {name} = {json.dumps(value, ensure_ascii=False)}")
 
     for w in all_warnings:
         print(f"  warning: {w}")
