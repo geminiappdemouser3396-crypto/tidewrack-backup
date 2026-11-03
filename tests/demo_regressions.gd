@@ -162,6 +162,69 @@ func _run() -> void:
 	await wait_scene(GAME)
 	check(GameState.flags == {"lamp_relit": true} and Journal.entries().is_empty(), "legacy flags restored and stale entries cleared")
 	check(not DialogueManager.is_active and DialogueManager._current_id.is_empty() and not get_tree().current_scene._dialogue_box._root.visible, "legacy save clears cursor and leaves dialogue closed")
+	for linear in [true, false]:
+		for lamp_lit in [true, false]:
+			await check_v2_round_trip(linear, lamp_lit)
 	if failures == 0:
 		print("TIDEWRACK_GODOT_REGRESSIONS_OK")
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+## Starts and ends on the ground floor. Every combination uses the real slot UI.
+func check_v2_round_trip(linear: bool, lamp_lit: bool) -> void:
+	var label := "linear=%s lamp_relit=%s: " % [linear, lamp_lit]
+	action("ui_cancel")
+	click("Main Menu")
+	await wait_scene(TITLE)
+	click("New Game")
+	await wait_scene(GAME)
+	var game = get_tree().current_scene
+	var expected_flags := {"lamp_relit": lamp_lit, "trusted_edith": false}
+	# The demo has a reader for lamp_relit but no playable puzzle setter.
+	GameState.set_flag("lamp_relit", lamp_lit)
+	GameState.set_flag("trusted_edith", false)
+	var cursor := {}
+	var line_text := ""
+	if linear:
+		game._player.position = game._interactables[0].position
+		await get_tree().process_frame
+		await get_tree().process_frame
+		action("ui_accept")
+		DialogueManager.advance()
+		cursor = {"graph": GRAPH, "node": "logbook_2"}
+		line_text = game._dialogue_box._full_text
+		check(not line_text.is_empty() and game._dialogue_box._typing, label + "saving a typing linear line")
+	else:
+		# Seed a previously discovered entry without starting a conversation.
+		Journal.discover("logbook")
+	check(DialogueManager.checkpoint() == cursor, label + "expected cursor before Save")
+	action("ui_cancel")
+	click("Save")
+	var payload = JSON.parse_string(FileAccess.get_file_as_string(GameState.SAVE_PATH))
+	if typeof(payload) != TYPE_DICTIONARY:
+		check(false, label + "Save did not produce a dictionary")
+		return
+	check(payload.get("version") == 2 and payload.get("scene") == GAME, label + "v2 gameplay slot")
+	check(payload.get("dialogue") == cursor and payload.get("journal_entries") == ["logbook"], label + "on-disk cursor and discoveries")
+	check(payload.get("flags") == expected_flags, label + "on-disk flags including explicit boolean")
+	click("Main Menu")
+	await wait_scene(TITLE)
+
+	# Make every singleton disagree with the slot so retained memory cannot pass.
+	GameState.set_flag("lamp_relit", not lamp_lit)
+	GameState.set_flag("stale", true)
+	Journal.replace_entries(["stale"])
+	check(DialogueManager.start(GRAPH, "door"), label + "seed stale dialogue")
+	click("Continue")
+	await wait_scene(GAME)
+	game = get_tree().current_scene
+	check(GameState.flags == expected_flags and typeof(GameState.flags.get("lamp_relit")) == TYPE_BOOL, label + "exact restored flags")
+	check(Journal.entries() == ["logbook"], label + "restored discoveries replace stale entries")
+	check(DialogueManager.is_active == linear and DialogueManager.checkpoint() == cursor, label + "restored cursor")
+	check(game._dialogue_box._root.is_visible_in_tree() == linear, label + "dialogue visibility")
+	check(game._player.can_move == (not linear), label + "movement state")
+	check(game._dialogue_box._choice_box.get_child_count() == 0, label + "no choice buttons")
+	if linear:
+		check(game._dialogue_box._full_text == line_text and game._dialogue_box._continue_hint.is_visible_in_tree(), label + "restored linear text and advance hint")
+	else:
+		check(DialogueManager._current_id.is_empty(), label + "no staged or active node")
