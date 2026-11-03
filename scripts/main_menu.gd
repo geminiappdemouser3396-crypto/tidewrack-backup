@@ -81,8 +81,8 @@ func _on_new_game() -> void:
 
 
 func _on_continue() -> void:
-	if GameState.load_game():
-		get_tree().change_scene_to_file(GameState.current_scene)
+	if not GameState.load_game(true):
+		_continue_button.text = "Load failed — retry"
 
 
 func _on_settings() -> void:

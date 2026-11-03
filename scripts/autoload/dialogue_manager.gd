@@ -38,25 +38,26 @@ func checkpoint() -> Dictionary:
 	return {"graph": _graph_path, "node": _current_id}
 
 
-## Validate and stage the cursor without signalling the departing title scene.
-func stage_checkpoint(cursor: Dictionary) -> bool:
-	if cursor.is_empty():
-		reset()
-		return true
+## Read and validate without touching the live or previously staged conversation.
+func read_checkpoint_graph(cursor: Dictionary) -> Dictionary:
 	var path: Variant = cursor.get("graph")
 	var id: Variant = cursor.get("node")
-	if typeof(path) != TYPE_STRING or typeof(id) != TYPE_STRING:
-		return false
+	if typeof(path) != TYPE_STRING or typeof(id) != TYPE_STRING or id.is_empty():
+		return {}
 	if not path.begins_with("res://data/dialogue/") or path.contains("..") or not path.ends_with(".json"):
-		return false
+		return {}
 	var graph := _load_graph(path)
-	if not graph.has(id) or typeof(graph[id]) != TYPE_DICTIONARY:
-		return false
+	if typeof(graph.get(id)) != TYPE_DICTIONARY:
+		return {}
+	return graph
+
+
+func stage_checkpoint(cursor: Dictionary, graph: Dictionary) -> void:
 	reset()
-	_graph = graph
-	_graph_path = path
-	_current_id = id
-	return true
+	if not cursor.is_empty():
+		_graph = graph
+		_graph_path = cursor["graph"]
+		_current_id = cursor["node"]
 
 
 func resume_checkpoint() -> void:
