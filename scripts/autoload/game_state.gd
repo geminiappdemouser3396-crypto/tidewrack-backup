@@ -7,7 +7,7 @@ extends Node
 signal state_changed
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 
 ## Story flags set during play, e.g. {"trusted_edith": true}.
 var flags: Dictionary = {}
@@ -25,6 +25,8 @@ func get_flag(name: String, default: Variant = false) -> Variant:
 
 
 func new_game() -> void:
+	DialogueManager.reset()
+	Journal.replace_entries([])
 	flags.clear()
 	current_scene = "res://scenes/game.tscn"
 	state_changed.emit()
@@ -38,7 +40,9 @@ func save_game() -> bool:
 	var payload := {
 		"version": SAVE_VERSION,
 		"scene": current_scene,
-		"flags": flags,
+		"flags": flags,  # Includes puzzle flags such as lamp_relit.
+		"journal_entries": Journal.entries(),
+		"dialogue": DialogueManager.checkpoint(),
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -65,10 +69,31 @@ func load_game() -> bool:
 		return false
 
 	var data: Dictionary = parsed
-	# Future-proofing: migrate older save versions here.
-	current_scene = data.get("scene", "res://scenes/game.tscn")
+	var version: Variant = data.get("version", 1)
+	if version != 1 and version != SAVE_VERSION:
+		return false
+	var scene: Variant = data.get("scene", "res://scenes/game.tscn")
+	if typeof(scene) != TYPE_STRING or not ResourceLoader.exists(scene, "PackedScene"):
+		return false
 	var loaded_flags: Variant = data.get("flags", {})
+	var ids: Variant = []
+	var cursor: Variant = {}
+	if version == SAVE_VERSION:
+		ids = data.get("journal_entries")
+		cursor = data.get("dialogue")
+		if typeof(ids) != TYPE_ARRAY or typeof(cursor) != TYPE_DICTIONARY or typeof(loaded_flags) != TYPE_DICTIONARY:
+			return false
+		for id in ids:
+			if typeof(id) != TYPE_STRING:
+				return false
+	# Only the ground-floor scene currently owns a dialogue interface.
+	if not cursor.is_empty() and scene != "res://scenes/game.tscn":
+		return false
+	if not DialogueManager.stage_checkpoint(cursor):
+		return false
+	current_scene = scene
 	flags = loaded_flags if typeof(loaded_flags) == TYPE_DICTIONARY else {}
+	Journal.replace_entries(ids)
 	state_changed.emit()
 	return true
 

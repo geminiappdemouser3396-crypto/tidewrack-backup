@@ -11,6 +11,9 @@ var _player: Player
 var _interactables: Array[Interactable] = []
 var _prompt: Label
 var _nearest: Interactable = null
+var _dialogue_box: CanvasLayer
+var _previous_focus: Control
+var _pause_layer: CanvasLayer
 var _paused: bool = false
 
 
@@ -20,11 +23,12 @@ func _ready() -> void:
 	_build_interactables()
 	_build_hud()
 
-	var dialogue_box := preload("res://scenes/ui/dialogue_box.tscn").instantiate()
-	add_child(dialogue_box)
+	_dialogue_box = preload("res://scenes/ui/dialogue_box.tscn").instantiate()
+	add_child(_dialogue_box)
 
 	DialogueManager.dialogue_started.connect(func(): _set_movement(false))
 	DialogueManager.dialogue_finished.connect(func(): _set_movement(true))
+	DialogueManager.resume_checkpoint()
 
 
 func _build_room() -> void:
@@ -130,6 +134,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("ui_accept") and _nearest != null:
 		_nearest.interact()
+		if DialogueManager.is_active and _nearest.dialogue_start == "logbook":
+			Journal.discover("logbook")
 		get_viewport().set_input_as_handled()
 
 
@@ -139,12 +145,21 @@ func _set_movement(enabled: bool) -> void:
 
 
 func _toggle_pause() -> void:
-	if DialogueManager.is_active:
-		return
 	_paused = not _paused
-	_set_movement(not _paused)
+	_set_movement(not DialogueManager.is_active)
 	if _paused:
+		_previous_focus = get_viewport().gui_get_focus_owner()
+		_dialogue_box.hide()
+		_dialogue_box.process_mode = Node.PROCESS_MODE_DISABLED
 		_show_pause_menu()
+	else:
+		_pause_layer.hide()
+		_pause_layer.queue_free()
+		_dialogue_box.process_mode = Node.PROCESS_MODE_INHERIT
+		_dialogue_box.show()
+		if is_instance_valid(_previous_focus):
+			_previous_focus.grab_focus()
+		_previous_focus = null
 
 
 func _show_pause_menu() -> void:
@@ -154,6 +169,7 @@ func _show_pause_menu() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 20
 	layer.name = "PauseLayer"
+	_pause_layer = layer
 	layer.add_child(overlay)
 	add_child(layer)
 
@@ -171,10 +187,7 @@ func _show_pause_menu() -> void:
 	center.add_child(vbox)
 
 	var resume := _menu_button("Resume")
-	resume.pressed.connect(func():
-		layer.queue_free()
-		_paused = false
-		_set_movement(true))
+	resume.pressed.connect(_toggle_pause)
 	vbox.add_child(resume)
 
 	var save := _menu_button("Save")
